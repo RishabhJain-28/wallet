@@ -1,0 +1,24 @@
+{
+  "name": "cypherock",
+  "version": "1.0.0",
+  "description": "",
+  "main": "wallet.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node wallet.js",
+    "dev": "nodemon wallet.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.25.0",
+    "bip32": "^3.0.1",
+    "bitcoinjs-lib": "^6.0.1",
+    "coinselect": "^3.1.12",
+    "tiny-secp256k1": "^2.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
+  }
+}
