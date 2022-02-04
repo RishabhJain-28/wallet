@@ -2,7 +2,9 @@ const bjl = require("bitcoinjs-lib");
 require("dotenv").config();
 const ecc = require("tiny-secp256k1");
 const coinSelect = require("coinselect/accumulative");
-let BIP32Factory = require("bip32").default;
+const fs = require("fs");
+const BIP32Factory = require("bip32").default;
+const path = require("path");
 
 const bip32 = BIP32Factory(ecc);
 const axios = require("axios").create({
@@ -45,7 +47,7 @@ class Wallet {
       return data;
     } catch (err) {
       console.error(err.message);
-      console.error(err.response.data);
+      if (err.response) console.error(err.response.data);
     }
   }
 
@@ -60,7 +62,7 @@ class Wallet {
       return data;
     } catch (err) {
       console.error(err.message);
-      console.error(err.response.data);
+      if (err.response) console.error(err.response.data);
     }
   }
 
@@ -73,12 +75,42 @@ class Wallet {
       );
     } catch (err) {
       console.error(err.message);
-      console.error(err.response.data);
+      if (err.response) console.error(err.response.data);
     }
   }
 
   //this function will fetch the "addresses" from blockcypher database of an already existing wallet recognised by the "name" argument.
   async fetch_utxo(recieve, change) {
+    return [
+      {
+        tx_hash:
+          "63002ad757775c58745425634fbacc4bf50653dbe3fc87bcbae5c16c31e95c13",
+        block_height: 2139116,
+        tx_input_n: -1,
+        tx_output_n: 1,
+        value: 1372213,
+        ref_balance: 1438418,
+        spent: false,
+        confirmations: 4,
+        confirmed: "2022-02-04T09:28:31Z",
+        double_spend: false,
+        script: "76a914ff8c4284da5caa787bcb371d79270b1c3f2b126a88ac",
+      },
+      {
+        tx_hash:
+          "c29ff3cc2f72539fa2fbd37b22018cba4faadfb23776b9d52e2cea38be442284",
+        block_height: 2139115,
+        tx_input_n: -1,
+        tx_output_n: 1,
+        value: 66205,
+        ref_balance: 66205,
+        spent: false,
+        confirmations: 5,
+        confirmed: "2022-02-04T09:21:52Z",
+        double_spend: false,
+        script: "76a914ff8c4284da5caa787bcb371d79270b1c3f2b126a88ac",
+      },
+    ];
     try {
       const { data: recieveData } = await axios.get(
         `/addrs/${recieve}?unspentOnly=true&includeScript=true`
@@ -104,10 +136,6 @@ class Wallet {
     const addresses = this.address_list(xpub, 0, 0, 20);
     const changeAddress = this.address_list(xpub, 1, 0, 20);
 
-    // console.log(addresses);
-    // this.add_wallet("testWallet", addresses);
-    // this.fetch_wallet("testWallet");
-    // this.add_addresses("testWallet", addresses);
     const utxos = await this.fetch_utxo(addresses[0], changeAddress[0]);
     let targets = [
       {
@@ -122,69 +150,95 @@ class Wallet {
         vout: u.tx_output_n,
         value: u.value,
         script: u.script,
-        // nonWitnessUtxo: Buffer.from("...full raw hex of txId tx...", "hex"),
-        // nonWitnessUtxo:  Buffer.from("HOW DO I GET THIS?", "hex"),
       })),
       targets,
       55
     );
-    console.log("inputs ", inputs);
-    console.log("outputs", outputs);
     if (!inputs || !outputs) return;
 
-    const psbt = new bjl.Psbt();
-    psbt.setVersion(1);
-    psbt.setLocktime(0);
+    var txBuilder = new bjl.TransactionBuilder(bjl.networks.testnet);
     inputs.forEach((input) => {
-      psbt.addInput({
-        hash: input.txId,
-        index: input.vout,
-        sequence: 0xffffffff,
-        sighashType: 1,
-        // non-segwit inputs now require passing the whole previous tx as Buffer
-        //THIS IS FROM THE DOC OF BITCOINJS_LIB
-        //HOW DO I GET THIS FOR CURRENT UTXO?
-        // nonWitnessUtxo: Buffer.from(
-        //   "0200000001f9f34e95b9d5c8abcd20fc5bd4a825d1517be62f0f775e5f36da944d9" +
-        //     "452e550000000006b483045022100c86e9a111afc90f64b4904bd609e9eaed80d48" +
-        //     "ca17c162b1aca0a788ac3526f002207bb79b60d4fc6526329bf18a77135dc566020" +
-        //     "9e761da46e1c2f1152ec013215801210211755115eabf846720f5cb18f248666fec" +
-        //     "631e5e1e66009ce3710ceea5b1ad13ffffffff01" +
-        // value in satoshis (Int64LE) = 0x015f90 = 90000
-        //     "905f010000000000" +
-        // scriptPubkey length
-        //     "19" +
-        // scriptPubkey
-        //     "76a9148bbc95d2709c71607c60ee3f097c1217482f518d88ac" +
-        // locktime
-        //     "00000000",
-        //   "hex"
-        // ),
-
-        // If this input was segwit, instead of nonWitnessUtxo, you would add
-        // a witnessUtxo as follows. The scriptPubkey and the value only are needed.
-        // witnessUtxo: {
-        //   script: Buffer.from(input.script, "hex"),
-        //   value: 90000,
-        // },
-      });
+      txBuilder.addInput(
+        input.txId,
+        input.vout,
+        0xffffffff,
+        Buffer.from(input.script, "hex")
+      );
     });
+
     outputs.forEach((output) => {
-      // if(!output.)
-      psbt.addOutput(output);
+      if (!output.address) output.address = changeAddress[0];
+      txBuilder.addOutput(output.address, output.value);
     });
 
-    // console.log(psbt.data);
-    console.log(psbt.toHex());
+    const tx = txBuilder.buildIncomplete();
+    inputs.forEach((input, i) => {
+      tx.ins[i].script = Buffer.from(input.script, "hex");
+    });
+    return tx;
   }
   //this fucntion will generate unsigned txn using "xpub" to send "amount" to "output_address"
+
+  async sign_transaction(unsigned_tx, private_key_wif) {
+    const txBuilder = bjl.TransactionBuilder.fromTransaction(
+      unsigned_tx,
+      this.network
+    );
+    const keyPair = bjl.ECPair.fromWIF(private_key_wif, this.network);
+    console.log("keyPiar: ", keyPair);
+    txBuilder.sign(0, keyPair);
+    const tx = txBuilder.build();
+    return tx;
+  }
+  //this fucntion will sign an unsigned txn using "private_key_wif"
+
+  async broadcast_transaction(signed_tx) {
+    try {
+      const { data } = await axios.post(
+        `/txs/push?token=${process.env.BLOCKCYPHER_TOKEN}`,
+        {
+          tx: signed_tx.toHex(),
+        }
+      );
+      return { data, error: null };
+    } catch (err) {
+      console.error(err.message);
+      console.error(err.response.data);
+      return { data: null, error: err.response.data };
+    }
+  }
+  //this fucntion will broadcast a signed transaction using blockcypher APIs
 }
 
-let a = new Wallet(bjl.networks.testnet);
+async function main() {
+  let a = new Wallet(bjl.networks.testnet);
+  const privateKeyWIF = fs
+    .readFileSync(path.join(__dirname, "./.secret"))
+    .toString();
 
-a.generate_unsigned_transaction(
+  // a.add_wallet("testWallet", addresses);
+  // a.fetch_wallet("testWallet");
+  // a.add_addresses("testWallet", addresses);
+
   // "tpubDCXQSRz1QR71xTm78eE75gXcV4goo6sYG5yRuSVeTfpLbT2P4Aaf4KBgQpHpZ1GhaR6Z4ktazi1hHbzMeJG6htSyiracJYmz1zQReiJmLsN",
-  "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9",
-  "n3AUMFmYXE9FNgXHWkXZQVkkmxfCF5kbnd",
-  500
-);
+  const addresses = a.address_list(
+    "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9",
+    0,
+    0,
+    20
+  );
+  // this.address_list(xpub, 0, 0, 20);
+  const from = addresses[20];
+
+  const tx = await a.generate_unsigned_transaction(
+    "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9",
+    // "n3AUMFmYXE9FNgXHWkXZQVkkmxfCF5kbnd",
+    from,
+    500
+  );
+  const signedTx = await a.sign_transaction(tx, privateKeyWIF);
+  const broadcastTx = await a.broadcast_transaction(signedTx);
+  console.log("FROM: ", from);
+  console.log("broadcastTx: ", broadcastTx);
+}
+main();
