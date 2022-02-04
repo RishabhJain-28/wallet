@@ -34,7 +34,6 @@ class Wallet {
     }
     return addressList;
   }
-
   //this function will generate bitcoin testnet addresses using "xpub" for "chain" index = 0 or 1 from range index "start" to "end".
 
   async add_wallet(name, addresses) {
@@ -50,7 +49,6 @@ class Wallet {
       if (err.response) console.error(err.response.data);
     }
   }
-
   //this function will add the "addresses" list on blockcypher database. This list is recognised by the "name" argument.
 
   async add_addresses(name, addresses) {
@@ -65,7 +63,6 @@ class Wallet {
       if (err.response) console.error(err.response.data);
     }
   }
-
   //this function will add the "addresses" on blockcypher database to an already existing wallet recognised by the "name" argument.
 
   async fetch_wallet(name) {
@@ -73,63 +70,27 @@ class Wallet {
       const { data } = await axios.get(
         `/wallets/${name}?token=${process.env.BLOCKCYPHER_TOKEN}`
       );
+      return data;
     } catch (err) {
       console.error(err.message);
       if (err.response) console.error(err.response.data);
     }
   }
-
   //this function will fetch the "addresses" from blockcypher database of an already existing wallet recognised by the "name" argument.
+
   async fetch_utxo(recieve, change) {
-    return [
-      {
-        tx_hash:
-          "63002ad757775c58745425634fbacc4bf50653dbe3fc87bcbae5c16c31e95c13",
-        block_height: 2139116,
-        tx_input_n: -1,
-        tx_output_n: 1,
-        value: 1372213,
-        ref_balance: 1438418,
-        spent: false,
-        confirmations: 4,
-        confirmed: "2022-02-04T09:28:31Z",
-        double_spend: false,
-        script: "76a914ff8c4284da5caa787bcb371d79270b1c3f2b126a88ac",
-      },
-      {
-        tx_hash:
-          "c29ff3cc2f72539fa2fbd37b22018cba4faadfb23776b9d52e2cea38be442284",
-        block_height: 2139115,
-        tx_input_n: -1,
-        tx_output_n: 1,
-        value: 66205,
-        ref_balance: 66205,
-        spent: false,
-        confirmations: 5,
-        confirmed: "2022-02-04T09:21:52Z",
-        double_spend: false,
-        script: "76a914ff8c4284da5caa787bcb371d79270b1c3f2b126a88ac",
-      },
-    ];
     try {
-      const { data: recieveData } = await axios.get(
-        `/addrs/${recieve}?unspentOnly=true&includeScript=true`
+      const { data } = await axios.get(
+        `/addrs/${recieve};${change}&unspentOnly=true&includeScript=true`
       );
-      const { data: changeData } = await axios.get(
-        `/addrs/${change}?unspentOnly=true&includeScript=true`
-      );
-      const result = [
-        ...(recieveData.txrefs || []),
-        ...(changeData.txrefs || []),
-      ];
-      console.log("result", result);
+      const result = [];
+      data.forEach((acc) => result.push(...(acc.txrefs || [])));
       return result;
     } catch (err) {
       console.error(err.message);
       if (err.response) console.error(err.response.data);
     }
   }
-
   //this function will fetch "UTXOs" using wallet name provided in "receive" and "change" argumnets using blockcypher APIs
 
   async generate_unsigned_transaction(xpub, output_address, amount) {
@@ -137,14 +98,14 @@ class Wallet {
     const changeAddress = this.address_list(xpub, 1, 0, 20);
 
     const utxos = await this.fetch_utxo(addresses[0], changeAddress[0]);
-    let targets = [
+    const targets = [
       {
         address: output_address,
         value: amount,
       },
     ];
 
-    let { inputs, outputs } = coinSelect(
+    const { inputs, outputs } = coinSelect(
       utxos.map((u) => ({
         txId: u.tx_hash,
         vout: u.tx_output_n,
@@ -156,7 +117,7 @@ class Wallet {
     );
     if (!inputs || !outputs) return;
 
-    var txBuilder = new bjl.TransactionBuilder(bjl.networks.testnet);
+    const txBuilder = new bjl.TransactionBuilder(bjl.networks.testnet);
     inputs.forEach((input) => {
       txBuilder.addInput(
         input.txId,
@@ -185,7 +146,6 @@ class Wallet {
       this.network
     );
     const keyPair = bjl.ECPair.fromWIF(private_key_wif, this.network);
-    console.log("keyPiar: ", keyPair);
     txBuilder.sign(0, keyPair);
     const tx = txBuilder.build();
     return tx;
@@ -194,12 +154,10 @@ class Wallet {
 
   async broadcast_transaction(signed_tx) {
     try {
-      const { data } = await axios.post(
-        `/txs/push?token=${process.env.BLOCKCYPHER_TOKEN}`,
-        {
-          tx: signed_tx.toHex(),
-        }
-      );
+      const { data } = await axios.post(`/txs/push`, {
+        tx: signed_tx.toHex(),
+        token: process.env.BLOCKCYPHER_TOKEN,
+      });
       return { data, error: null };
     } catch (err) {
       console.error(err.message);
@@ -211,34 +169,26 @@ class Wallet {
 }
 
 async function main() {
-  let a = new Wallet(bjl.networks.testnet);
+  const xpub =
+    "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9";
+  // "tpubDCXQSRz1QR71xTm78eE75gXcV4goo6sYG5yRuSVeTfpLbT2P4Aaf4KBgQpHpZ1GhaR6Z4ktazi1hHbzMeJG6htSyiracJYmz1zQReiJmLsN",
   const privateKeyWIF = fs
-    .readFileSync(path.join(__dirname, "./.secret"))
+    .readFileSync(path.join(__dirname, "./.privateKey"))
     .toString();
 
-  // a.add_wallet("testWallet", addresses);
-  // a.fetch_wallet("testWallet");
-  // a.add_addresses("testWallet", addresses);
+  let a = new Wallet(bjl.networks.testnet);
+  const addresses = a.address_list(xpub, 0, 0, 20);
 
-  // "tpubDCXQSRz1QR71xTm78eE75gXcV4goo6sYG5yRuSVeTfpLbT2P4Aaf4KBgQpHpZ1GhaR6Z4ktazi1hHbzMeJG6htSyiracJYmz1zQReiJmLsN",
-  const addresses = a.address_list(
-    "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9",
-    0,
-    0,
-    20
-  );
-  // this.address_list(xpub, 0, 0, 20);
-  const from = addresses[20];
+  const to = addresses[19];
+  // "n3AUMFmYXE9FNgXHWkXZQVkkmxfCF5kbnd";
 
-  const tx = await a.generate_unsigned_transaction(
-    "tpubDDstPjuTiifdCGdDTHTZWRn96GfDPQtycNB6uotgJ8kdg6ydeuD8yT3xHiBgfxRpJ1ih96DuKQWb6VP7U9UtYRNpvUDfUtsjcnXhdLXT9x9",
-    // "n3AUMFmYXE9FNgXHWkXZQVkkmxfCF5kbnd",
-    from,
-    500
-  );
+  // console.log("TO: ", to);
+  const tx = await a.generate_unsigned_transaction(xpub, to, 500);
+
   const signedTx = await a.sign_transaction(tx, privateKeyWIF);
+  console.log("signed: ", signedTx.toHex());
+
   const broadcastTx = await a.broadcast_transaction(signedTx);
-  console.log("FROM: ", from);
   console.log("broadcastTx: ", broadcastTx);
 }
 main();
